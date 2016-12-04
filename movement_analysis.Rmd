@@ -1,0 +1,158 @@
+---
+title: "Movement Analysis"
+author: "Peter Tung"
+date: "December 3, 2016"
+output: html_document
+email: peter.k.tung@gmail.com
+---
+
+```{r setup, include=FALSE}
+# assumes data exists in a "data" directory
+knitr::opts_chunk$set(echo = FALSE, include = TRUE)
+library(ggplot2)
+library(scales)
+suppressWarnings(library(dplyr))
+
+spell_df <- read.csv("data/spell_clean.csv")
+placement_df <- read.csv("data/rp_placements_clean.csv")
+merged_df <- read.csv("data/final_merge_minus_abscondence.csv")
+
+placement_end_reasons_df <- read.csv("data/CYF Placement End Reasons 2016_12_02.csv")
+colnames(placement_end_reasons_df) <- c("CW.Exit.Reason", "Move.Reason.Desirability", "Notes")
+placement_end_reasons_df <- placement_end_reasons_df[c("CW.Exit.Reason", "Move.Reason.Desirability")]
+
+final_merged <- inner_join(merged_df, placement_end_reasons_df, by="CW.Exit.Reason")
+levels(final_merged$ETHNIC) <- c("Native American", "Asian & Pacific", "Black", "Multiple", "Other", "Unknown", "White")
+levels(final_merged$Move.Reason.Desirability) <- c("Unknown", "Bad", "Contextual", "Good", "Not a Move", "Placement still open")
+```
+## Basic background data:
+According to Wikipedia, (https://en.wikipedia.org/wiki/Allegheny_County,_Pennsylvania) the county demographics are as follows:
+* 82.87% White
+* 14.39% Black/African American
+* 2.94% Asian
+* 1.80% Other
+
+Let's look at the demographics of our dataset.
+```{r ethnic_distribution}
+ethnics <- unique(final_merged[c("CLIENT_ID", "ETHNIC")])
+p <-ggplot(aes(x=ETHNIC), data=subset(ethnics, !is.na(ETHNIC))) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  ylab("Percent") +
+  scale_y_continuous(labels = percent)
+print(p)
+```
+
+## Foster Care Movements
+```{r movements}
+child_moves <- final_merged %>%
+  group_by(CLIENT_ID) %>%
+  summarise(
+    Moves = n()-1) %>%
+  arrange(CLIENT_ID)
+
+p <- ggplot(aes(x=Moves), data=child_moves) + 
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  ylab("Percent") +
+  scale_y_continuous(labels = percent)
+
+print(p)
+```
+
+We can see that more than 45% of the children never had to move (single placement).  Not surprising that the proportion decreases exponentially as the number of moves increases.  Note that there's also one outlier at 52 moves!
+
+## The One and Dones
+We claim that stability is a good thing, let's back this up with data
+```{r one_done_good_bad}
+child_no_move <- child_moves[child_moves$Moves == 0,]
+merged_no_move <- final_merged[final_merged$CLIENT_ID %in% child_no_move$CLIENT_ID,]
+
+p <-ggplot(aes(x=Move.Reason.Desirability), data=merged_no_move) + geom_bar()
+print(p)
+```
+
+Indeed, the majority of the single placement scenarios end well.  Let's see if there are any patterns to the "Good" exits.
+
+```{r one_done_good}
+merged_no_move_good <- merged_no_move[merged_no_move$Move.Reason.Desirability == "Good",]
+p <- ggplot(aes(x=ETHNIC, y=PLMT_AGE), data = subset(merged_no_move_good, PLMT_AGE <= 21)) +
+  geom_jitter(alpha = 1/5, aes(color = GENDER))
+print(p)
+```
+
+Besides the concentration of points where age is 0, it is unclear whether placement age or gender is a contributor.
+
+```{r one_done_end_paid}
+p <- ggplot(aes(x=CW.Exit.Reason.Type, y=End.Care.Reason), data = merged_no_move_good) +
+  geom_jitter(alpha = 1/5, aes(color = TYPE_PLACEMENT))
+print(p)
+```
+
+What about the bad exits?
+
+```{r one_done_bad}
+merged_no_move_bad <- merged_no_move[merged_no_move$Move.Reason.Desirability == "Bad",]
+p <- ggplot(aes(x=ETHNIC, y=PLMT_AGE), data = subset(merged_no_move_bad, PLMT_AGE <= 21)) + 
+  geom_jitter(alpha = 1/5)
+print(p)
+```
+
+We can see the majority of the bad exits have a placement age of 15 or above.
+
+```{r}
+p <- ggplot(aes(x=CW.Exit.Reason.Type, y=End.Care.Reason), data = merged_no_move_bad) +
+  geom_jitter(alpha = 1/3, aes(color = TYPE_PLACEMENT))
+print(p)
+```
+
+
+
+```{r moved_good_bad}
+child_moved <- child_moves[child_moves$Moves > 0,]
+merged_moved <- final_merged[final_merged$CLIENT_ID %in% child_moved$CLIENT_ID,]
+p <- ggplot(aes(x=Move.Reason.Desirability), data=merged_moved) + geom_bar()
+print(p)
+```
+
+```{r}
+child_moved_good <- merged_moved[merged_moved$Move.Reason.Desirability == "Good",]
+p <- ggplot(aes(x=CW.Exit.Reason.Type, y=End.Care.Reason), data = merged_moved_good) +
+  geom_jitter(alpha = 1/10, aes(color = TYPE_PLACEMENT))
+print(p)
+```
+
+Let's see if we can "normalize" the placement experience per child as a value and see if we can find some insights there.
+
+For now, we only use CLIENT_PLMT_NO as the weight and the end placement (Good/Bad) as value.  The score will of each placement will be (Good = 0, Bad = 1) * CLIENT_PLMT_NO.  We are assuming as number of placement increases the emotional state of the child continues to deteriorate.
+
+In the future, this value can include other variables like placement length, age of placement, etc to get a more accurate score.
+
+```{r}
+merged_moved <- within(merged_moved, {
+  score = ifelse(Move.Reason.Desirability == "Bad", CLIENT_PLMT_NO,0)
+})
+merged_moved_summary <- subset(merged_moved, select=c(CLIENT_ID, score, Abandonment:Truancy))
+
+placement_score <- merged_moved_summary %>%
+  group_by(CLIENT_ID) %>%
+  summarise(score_avg = mean(score)) %>%
+  arrange(CLIENT_ID)
+
+placement_removal_sum <- merged_moved_summary %>%
+  group_by(CLIENT_ID) %>%
+  summarise_each(funs(sum)) %>%
+  arrange(CLIENT_ID)
+
+placement_score_all <- inner_join(placement_score, placement_removal_sum, by="CLIENT_ID")
+
+merged_moved_children <- unique(merged_moved[c("CLIENT_ID", "GENDER", "ETHNIC")])
+placement_score_all <- inner_join(placement_score_all, merged_moved_children, by="CLIENT_ID")
+
+p <- ggplot(aes(x=score), data = placement_score_all) + geom_histogram(binwidth=0.5)
+print(p)
+```
+
+
+```{r}
+
+
+```
