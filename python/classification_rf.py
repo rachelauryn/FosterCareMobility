@@ -15,7 +15,7 @@ def run_model(model):
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     print 'Accuracy', accuracy_score(y_test, y_pred)
-    print 'Cross Val Score', cross_val_score(model, X, y)
+    print 'Cross Val Score', cross_val_score(model, X, y,cv=5,n_jobs=-1)
     print 'Confusion Matrix','\n',  confusion_matrix(y_test, y_pred)
     print 'Classification Report','\n', classification_report(y_test, y_pred)
 
@@ -42,18 +42,24 @@ if __name__=="__main__":
     
     hispanic_dummies = pd.get_dummies(df.HISPANIC)
     ethnic_dummies = pd.get_dummies(df.ETHNIC)
+    place1_dummies = pd.get_dummies(df.PLACE1)
     df = pd.concat([df,hispanic_dummies], axis = 1)
     df = pd.concat([df,ethnic_dummies], axis = 1)
+    df = pd.concat([df,place1_dummies], axis = 1)
     relfields=['STARTAGE', 'SPELLAGE', 'N', 'U', 'Y', 
                'AN','AS','BL','MU','OT','UK','WH',
                'NPLACES','P_AL','P_FC','P_GH','P_IL',
-               'P_RC','P_RT','P_SF','P_SG','P_SK','P_UK','P_KC']
+               'P_RC','P_RT','P_SF','P_SG','P_SK','P_UK','P_KC',
+               'PAL','PFC', 'PGH', 'PIL', 'PKC', 'PRC', 'PRT',
+               'PSF', 'PSG', 'PUK',
+               'IM','DURAT'#,'TIMER'
+               ]
     X = df[relfields]
     y = df.outcome
     
     
     X_train, X_test, y_train, y_test = train_test_split(X, y)
-    rf = RandomForestClassifier()
+    rf = RandomForestClassifier(n_estimators=50)
     run_model(rf)  
     importances=rf.feature_importances_
     
@@ -76,3 +82,4 @@ if __name__=="__main__":
     plt.xticks(range(X.shape[1]), relfields[indices])
     plt.xlim([-1, X.shape[1]])
     plt.show()    
+    
