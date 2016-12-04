@@ -5,7 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.cross_validation import cross_val_score
 from sklearn.cross_validation import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier,RandomForestRegressor
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from sklearn.datasets import make_classification
 from sklearn.ensemble import ExtraTreesClassifier
@@ -23,6 +23,7 @@ def run_model(model):
 if __name__=="__main__":
     mydir='c:\datakind'
     fname='spell_clean.csv'
+    #fname='final_merge_minus_abscondence.csv'
     #fname='providers_clean.csv'
     
     myfile=os.path.join(mydir,fname)
@@ -39,27 +40,48 @@ if __name__=="__main__":
     outcomes = [exit_mapping[x] for x in df.EXIT if x in exit_mapping]
     #sns.countplot(outcomes)
     df['outcome'] = outcomes
+    #remove children with unknown outcomes
+    df=df[df.outcome.str.contains(unknown_val) == False]
+    #MAP GENDER
+    exit_mapping = {
+        'F':0, 'M':1, 
+    }
+    gender = [exit_mapping[x] for x in df.GENDER if x in exit_mapping]
+    df['GENDER']=gender
     
     hispanic_dummies = pd.get_dummies(df.HISPANIC)
     ethnic_dummies = pd.get_dummies(df.ETHNIC)
     place1_dummies = pd.get_dummies(df.PLACE1)
+    #place1_dummies = pd.get_dummies(df.GENDER)
     df = pd.concat([df,hispanic_dummies], axis = 1)
     df = pd.concat([df,ethnic_dummies], axis = 1)
     df = pd.concat([df,place1_dummies], axis = 1)
-    relfields=['STARTAGE', 'SPELLAGE', 'N', 'U', 'Y', 
+    #df = pd.concat([df,gender_dummies], axis = 1)
+ 
+ 
+    fname='providers_clean.csv'
+    myfile=os.path.join(mydir,fname)
+    df_provider=pd.read_csv(myfile) 
+    print df_provider
+ 
+ 
+ 
+    relfields=['STARTAGE', 'N', 'U', 'Y', 
                'AN','AS','BL','MU','OT','UK','WH',
                'NPLACES','P_AL','P_FC','P_GH','P_IL',
                'P_RC','P_RT','P_SF','P_SG','P_SK','P_UK','P_KC',
                'PAL','PFC', 'PGH', 'PIL', 'PKC', 'PRC', 'PRT',
-               'PSF', 'PSG', 'PUK',
-               'IM','DURAT'#,'TIMER'
+               'PSF', 'PSG', 'PUK','GENDER', #'SPELLAGE'
+               'IM'#,'DURAT'#,'TIMER'
                ]
     X = df[relfields]
     y = df.outcome
     
     
+    #Train
     X_train, X_test, y_train, y_test = train_test_split(X, y)
     rf = RandomForestClassifier(n_estimators=50)
+    #rf = RandomForestRegressor(n_estimators=50)
     run_model(rf)  
     importances=rf.feature_importances_
     
@@ -82,4 +104,3 @@ if __name__=="__main__":
     plt.xticks(range(X.shape[1]), relfields[indices])
     plt.xlim([-1, X.shape[1]])
     plt.show()    
-    
